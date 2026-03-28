@@ -1,0 +1,6 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 讓整體字體更像學校教材的感覺（可自行調整） */
+:root { color-scheme: dark; }
