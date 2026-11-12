@@ -4,7 +4,7 @@ import {evaluateVerification} from './verification.mjs';
 
 // Local deterministic coordinator. No provider credentials, network calls or AI execution.
 export class TeamOrchestrator {
-  constructor(store){this.store=store;this.controller=new Controller(store);this.queue=new WorkQueue(store);}
+  constructor(store){this.store=store;this.controller=new Controller(store);this.queue=new WorkQueue(store);this.recover();}
   submit(task){
     const saved=this.controller.submit(task);
     this.schedule(saved.id);
@@ -20,6 +20,12 @@ export class TeamOrchestrator {
       review_changes_requested:['repair',()=>this.controller.advance(id)],
       ci_failed:['repair',()=>this.controller.advance(id)]
     };
+    const waiting={awaiting_implementation:'implement',awaiting_review:'review',awaiting_ci:'ci',awaiting_repair:'repair'};
+    if(waiting[task.status]){
+      const kind=waiting[task.status];
+      const work=this.queue.enqueue({id:`${id}:${task.status}:${task.attempts}`,taskId:id,kind,payload:{owner:kind==='review'?'codex':kind==='ci'?'github-actions':task.owner,stage:task.status}});
+      return {task,work};
+    }
     const choice=actions[task.status];
     if(!choice)return {task,work:null};
     // State transition is performed before queue insertion, preventing duplicate scheduling.
@@ -49,11 +55,25 @@ export class TeamOrchestrator {
       this.queue.complete(id,worker,attempt,{outcome,evidence});
       this.store.db.exec('COMMIT');
     }catch(e){this.store.db.exec('ROLLBACK');throw e;}
-    if(work.kind==='ci'){
-      this.store.setCi(task.id,outcome==='ci_passed');
-      this.store.transition(task.id,outcome==='ci_passed'?'review_approved':'ci_failed',{actor:worker,note:outcome});
-    }else this.controller.recordExternalResult(task.id,outcome,{actor:worker,note:JSON.stringify(evidence)});
+    return this.reconcileCompleted(work.id);
+  }
+  reconcileCompleted(id){
+    const work=this.queue.get(id);
+    if(!work||work.status!=='completed')throw new Error('work not completed');
+    const task=this.store.get(work.task_id),result=JSON.parse(work.result||'{}');
+    const expected={implement:'awaiting_implementation',repair:'awaiting_repair',review:'awaiting_review',ci:'awaiting_ci'};
+    if(task.status===expected[work.kind]){
+      if(work.kind==='ci'){
+        this.store.setCi(task.id,result.outcome==='ci_passed');
+        this.store.transition(task.id,result.outcome==='ci_passed'?'review_approved':'ci_failed',{actor:'recovery',note:result.outcome});
+      }else this.controller.recordExternalResult(task.id,result.outcome,{actor:'recovery',note:'replayed completed work'});
+    }
     return this.schedule(task.id);
+  }
+  recover(){
+    const completed=this.store.db.prepare("SELECT id FROM work_items WHERE status='completed' ORDER BY rowid").all();
+    for(const item of completed)this.reconcileCompleted(item.id);
+    for(const task of this.store.list())this.schedule(task.id);
   }
   requestHumanApproval(id,{approved=false}={}){
     const task=this.store.get(id);
