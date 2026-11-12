@@ -17,4 +17,4 @@ jobs:
           test -s ai-agent-team/AGENTS.md
           test -s ai-agent-team/TASK_POLICY.md
       - name: Test task router and cost guardrails
-        run: node --test ai-agent-team/task-router.test.mjs
+        run: node --test ai-agent-team/*.test.mjs
