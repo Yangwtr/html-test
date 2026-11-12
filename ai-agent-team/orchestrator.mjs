@@ -62,7 +62,10 @@ export class TeamOrchestrator {
     if(!work||work.status!=='completed')throw new Error('work not completed');
     const task=this.store.get(work.task_id),result=JSON.parse(work.result||'{}');
     const expected={implement:'awaiting_implementation',repair:'awaiting_repair',review:'awaiting_review',ci:'awaiting_ci'};
-    if(task.status===expected[work.kind]){
+    // Only replay the completion belonging to the current task generation.
+    // An older review result must never advance a later review cycle.
+    const currentWorkId=`${task.id}:${expected[work.kind]}:${task.attempts}`;
+    if(task.status===expected[work.kind] && work.id===currentWorkId){
       if(work.kind==='ci'){
         this.store.setCi(task.id,result.outcome==='ci_passed');
         this.store.transition(task.id,result.outcome==='ci_passed'?'review_approved':'ci_failed',{actor:'recovery',note:result.outcome});
