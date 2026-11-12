@@ -1,20 +1,20 @@
-name: AI Agent Team Configuration Check
+name: AI Agent Team Checks
 on:
-  pull_request:
   push:
-    branches:
-      - AI-Agent-Team
+    branches: [AI-Agent-Team]
+  pull_request:
 jobs:
-  validate-agent-config:
+  validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Validate agent documentation
-        shell: bash
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check policy files
         run: |
           test -s ai-agent-team/README.md
           test -s ai-agent-team/AGENTS.md
-          grep -q 'Claude Code' ai-agent-team/AGENTS.md
-          grep -q 'Codex' ai-agent-team/AGENTS.md
-          grep -q 'Gemini' ai-agent-team/AGENTS.md
-          echo 'Agent collaboration documentation present.'
+          test -s ai-agent-team/TASK_POLICY.md
+      - name: Test task router and cost guardrails
+        run: node --test ai-agent-team/task-router.test.mjs
