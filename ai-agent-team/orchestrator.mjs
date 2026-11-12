@@ -30,7 +30,7 @@ export class TeamOrchestrator {
     if(!choice)return {task,work:null};
     // State transition is performed before queue insertion, preventing duplicate scheduling.
     const next=choice[1]();
-    if(next.status==='blocked')return {task:next,work:null};
+    if(next.status==='blocked'||next.status==='awaiting_human_merge_approval')return {task:next,work:null};
     const kind=choice[0],stage=next.status;
     const work=this.queue.enqueue({id:`${id}:${stage}:${next.attempts}`,taskId:id,kind,payload:{owner:kind==='review'?'codex':kind==='ci'?'github-actions':next.owner,stage}});
     return {task:next,work};
