@@ -1,0 +1,20 @@
+name: AI Agent Team Configuration Check
+on:
+  pull_request:
+  push:
+    branches:
+      - AI-Agent-Team
+jobs:
+  validate-agent-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate agent documentation
+        shell: bash
+        run: |
+          test -s ai-agent-team/README.md
+          test -s ai-agent-team/AGENTS.md
+          grep -q 'Claude Code' ai-agent-team/AGENTS.md
+          grep -q 'Codex' ai-agent-team/AGENTS.md
+          grep -q 'Gemini' ai-agent-team/AGENTS.md
+          echo 'Agent collaboration documentation present.'
