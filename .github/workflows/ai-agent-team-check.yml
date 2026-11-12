@@ -3,9 +3,13 @@ on:
   push:
     branches: [AI-Agent-Team]
   pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
 jobs:
   validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -16,5 +20,38 @@ jobs:
           test -s ai-agent-team/README.md
           test -s ai-agent-team/AGENTS.md
           test -s ai-agent-team/TASK_POLICY.md
-      - name: Test task router and cost guardrails
-        run: node --test ai-agent-team/*.test.mjs
+      - name: Run all unit and integration tests with machine-readable results
+        id: tests
+        shell: bash
+        run: |
+          mkdir -p test-results
+          set +e
+          node --test --test-reporter=tap ai-agent-team/*.test.mjs > test-results/results.tap 2>&1
+          code=$?
+          cat test-results/results.tap
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit "$code"
+      - name: Upload test results even when tests fail
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-agent-team-test-results
+          path: test-results/results.tap
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Publish job summary
+        if: always()
+        shell: bash
+        run: |
+          echo "## AI-Agent-Team test results" >> "$GITHUB_STEP_SUMMARY"
+          echo "Commit: \`$GITHUB_SHA\`" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f test-results/results.tap ]; then
+            grep -E '^# (tests|pass|fail|cancelled|skipped|todo|duration_ms) ' test-results/results.tap >> "$GITHUB_STEP_SUMMARY" || true
+            if [ "${{ steps.tests.outputs.exit_code }}" = "0" ]; then
+              echo "Result: PASS" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "Result: FAIL (see artifact for details)" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          else
+            echo "Result: NOT RUN (policy check or setup failed)" >> "$GITHUB_STEP_SUMMARY"
+          fi
